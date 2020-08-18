@@ -1,0 +1,15 @@
+{
+    "name": "Unity.Services.AnalyticsRuntime",
+    "references": [
+        "GUID:f82009cf854e040a18ebb38251781c58"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
