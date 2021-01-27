@@ -13,10 +13,12 @@ namespace Unity.Services.Analytics.Internal
     public interface IBuffer
     {
         string UserID { get; set; }
+        string InstallID { get; set; }
+        string PlayerID { get; set; }
         string SessionID { get; set; }
         string Serialize(List<Buffer.Token> tokens);
         void InsertTokens(List<Buffer.Token> tokens);
-        void PushStartEvent(string name, DateTime datetime, Int64? eventVersion);
+        void PushStartEvent(string name, DateTime datetime, Int64? eventVersion, bool addPlayerIdsToEventBody = false);
         void PushEndEvent();
         void PushObjectStart(string name = null);
         void PushObjectEnd();
@@ -36,7 +38,7 @@ namespace Unity.Services.Analytics.Internal
         void PushEvent(Event evt);
         List<Buffer.Token> CloneTokens();
     }
-    
+
     /// <summary>
     /// Captures the data as tokens so that can be used to build up the JSON
     /// Later. We do this so as not to serialize inside other peoples functions
@@ -45,10 +47,12 @@ namespace Unity.Services.Analytics.Internal
     /// This is _NOT_ a thread safe buffer, its the job of the calling code to
     /// handle that.
     /// </summary>
-    public class Buffer: IBuffer
+    public class Buffer : IBuffer
     {
         public string UserID { get; set; }
         public string SessionID { get; set; }
+        public string PlayerID { get; set; }
+        public string InstallID { get; set; }
 
         // With the exception of EventStart, EventEnd, these tokens map to the
         // DDNA JSON Schema. The full schema at the time of writing is. OBJECT,
@@ -69,6 +73,7 @@ namespace Unity.Services.Analytics.Internal
             Int64, // Maps to INTEGER
             Timestamp, // Maps to TIMESTAMP
             EventTimestamp, // Maps to EVENT_TIMESTAMP
+            StandardEventIds,
         }
 
         // The event information is broken into name, type, and data. The name
@@ -92,7 +97,7 @@ namespace Unity.Services.Analytics.Internal
 
         int m_DiskCacheLastFlushedToken;
         long m_DiskCacheSize;
-        
+
         public Buffer()
         {
             LoadFromDisk();
@@ -105,8 +110,7 @@ namespace Unity.Services.Analytics.Internal
             m_Tokens.Clear();
             return tokens;
         }
-        
-        
+
         public void InsertTokens(List<Token> tokens)
         {
             m_Tokens.AddRange(tokens);
@@ -221,7 +225,7 @@ namespace Unity.Services.Analytics.Internal
                     case TokenType.Boolean:
                     {
                         if (null != t.Name)
-                        { 
+                        {
                             data.Append("\"");
                             data.Append(t.Name);
                             data.Append("\":");
@@ -256,14 +260,14 @@ namespace Unity.Services.Analytics.Internal
                         break;
                     }
                     case TokenType.Timestamp:
-                        {
-                            data.Append("\"");
-                            data.Append(t.Name);
-                            data.Append("\":\"");
-                            data.Append(SaveDateTime((DateTime)t.Data));
-                            data.Append("\",");
-                            break;
-                        }
+                    {
+                        data.Append("\"");
+                        data.Append(t.Name);
+                        data.Append("\":\"");
+                        data.Append(SaveDateTime((DateTime)t.Data));
+                        data.Append("\",");
+                        break;
+                    }
                     case TokenType.EventTimestamp:
                     {
                         data.Append("\"eventTimestamp\":\"");
@@ -280,7 +284,7 @@ namespace Unity.Services.Analytics.Internal
                             data.Append("\":");
                         }
                         data.Append("{");
-                         break;
+                        break;
                     }
                     case TokenType.EventArrayStart:
                     {
@@ -288,6 +292,21 @@ namespace Unity.Services.Analytics.Internal
                         data.Append(t.Name);
                         data.Append("\":");
                         data.Append("[");
+                        break;
+                    }
+                    case TokenType.StandardEventIds:
+                    {
+                        data.Append("\"unityInstallationID\":\"");
+                        data.Append(InstallID);
+                        data.Append("\",");
+
+                        if (!string.IsNullOrEmpty(PlayerID))
+                        {
+                            data.Append("\"unityPlayerID\":\"");
+                            data.Append(PlayerID);
+                            data.Append("\",");
+                        }
+
                         break;
                     }
                 }
@@ -327,7 +346,7 @@ namespace Unity.Services.Analytics.Internal
             return byteCount >= byteLimit;
         }
 
-        public void PushStartEvent(string name, DateTime datetime, Int64? eventVersion)
+        public void PushStartEvent(string name, DateTime datetime, Int64? eventVersion, bool addPlayerIdsToEventBody = false)
         {
             #if UNITY_ANALYTICS_EVENT_LOGS
             Debug.LogFormat("Recorded event {0} at {1} (UTC)", name, SaveDateTime(datetime));
@@ -339,7 +358,7 @@ namespace Unity.Services.Analytics.Internal
                 Type = TokenType.EventStart,
                 Data = null
             });
-            
+
             m_Tokens.Add(new Token
             {
                 Name = name,
@@ -357,6 +376,16 @@ namespace Unity.Services.Analytics.Internal
                 });
             }
 
+            if (addPlayerIdsToEventBody)
+            {
+                m_Tokens.Add(new Token
+                {
+                    Name = null,
+                    Type = TokenType.StandardEventIds,
+                    Data = null
+                });
+            }
+
             m_Tokens.Add(new Token
             {
                 Name = null,
@@ -364,7 +393,7 @@ namespace Unity.Services.Analytics.Internal
                 Data = null
             });
         }
-        
+
         public void PushEndEvent()
         {
             m_Tokens.Add(new Token
@@ -373,7 +402,7 @@ namespace Unity.Services.Analytics.Internal
                 Type = TokenType.EventParamsEnd,
                 Data = null
             });
-            
+
             m_Tokens.Add(new Token
             {
                 Name = null,
@@ -436,17 +465,17 @@ namespace Unity.Services.Analytics.Internal
         {
             PushDouble(val, name);
         }
-        
+
         public void PushString(string val, string name = null)
         {
             #if UNITY_ANALYTICS_DEVELOPMENT
             Debug.AssertFormat(!string.IsNullOrEmpty(val), "Required to have a value");
             #endif
-            
+
             m_Tokens.Add(new Token
             {
                 Name = name,
-                Type = TokenType.String, 
+                Type = TokenType.String,
                 Data = val
             });
         }
@@ -465,7 +494,7 @@ namespace Unity.Services.Analytics.Internal
         {
             PushInt64(val, name);
         }
-        
+
         public void PushBool(bool val, string name = null)
         {
             m_Tokens.Add(new Token
@@ -485,7 +514,7 @@ namespace Unity.Services.Analytics.Internal
                 Data = val
             });
         }
-        
+
         public void FlushToDisk()
         {
             if (m_DiskCacheSize > m_CacheFileMaximumSize)
@@ -499,7 +528,7 @@ namespace Unity.Services.Analytics.Internal
                 using (BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8))
                 {
                     writer.Seek(0, SeekOrigin.End);
-                    
+
                     for (int i = m_DiskCacheLastFlushedToken; i < m_Tokens.Count; i++)
                     {
                         WriteToken(writer, m_Tokens[i]);
@@ -532,18 +561,30 @@ namespace Unity.Services.Analytics.Internal
             m_Tokens.Clear();
             if (File.Exists(m_CacheFilePath))
             {
-                using (FileStream stream = File.Open(m_CacheFilePath, FileMode.Open))
+                try
                 {
-                    using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8))
+                    List<Token> incomingEvents = new List<Token>();
+                    using (FileStream stream = File.Open(m_CacheFilePath, FileMode.Open))
                     {
-                        long length = stream.Length;
-                        while (stream.Position != length)
+                        using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8))
                         {
-                            m_Tokens.Add(ReadToken(reader));
+                            long length = stream.Length;
+                            while (stream.Position != length)
+                            {
+                                incomingEvents.Add(ReadToken(reader));
+                            }
+
+                            m_Tokens.AddRange(incomingEvents);
+                            m_DiskCacheSize = length;
+                            m_DiskCacheLastFlushedToken = m_Tokens.Count - 1;
                         }
-                        m_DiskCacheSize = length;
-                        m_DiskCacheLastFlushedToken = m_Tokens.Count - 1;
                     }
+                }
+                catch (Exception)
+                {
+                    Debug.LogWarning($"Error loading cached events: file was corrupt (probably due to improper app/system shutdown). Cached events have been discarded and other operations will continue as normal.");
+                    m_DiskCacheSize = 0;
+                    m_DiskCacheLastFlushedToken = 0;
                 }
             }
         }
@@ -589,7 +630,7 @@ namespace Unity.Services.Analytics.Internal
 
             bool hasName = reader.ReadBoolean();
             if (hasName)
-            { 
+            {
                 token.Name = reader.ReadString();
             }
 
@@ -612,19 +653,19 @@ namespace Unity.Services.Analytics.Internal
                     token.Data = ParseDateTime(reader.ReadString());
                     break;
             }
-            
+
             return token;
         }
-        
+
         public void PushEvent(Event evt)
         {
             // Serialize event
-            
+
             var dateTime = DateTime.UtcNow;
             PushStartEvent(evt.Name, dateTime, evt.Version);
-            
+
             // Serialize event params
-            
+
             var eData = evt.Parameters;
 
             foreach (var data in eData.Data)
@@ -654,7 +695,7 @@ namespace Unity.Services.Analytics.Internal
                     PushBool(boolVal, data.Key);
                 }
             }
-            
+
             PushEndEvent();
         }
     }
@@ -662,6 +703,8 @@ namespace Unity.Services.Analytics.Internal
     public class BufferRevoked : IBuffer
     {
         public string UserID { get; set; }
+        public string InstallID { get; set; }
+        public string PlayerID { get; set; }
         public string SessionID { get; set; }
 
         public void ClearBuffer()
@@ -676,7 +719,7 @@ namespace Unity.Services.Analytics.Internal
         {
             return new List<Buffer.Token>();
         }
-        
+
         public void InsertTokens(List<Buffer.Token> tokens)
         {
         }
@@ -733,7 +776,7 @@ namespace Unity.Services.Analytics.Internal
         {
         }
 
-        public void PushStartEvent(string name, DateTime datetime, long? eventVersion)
+        public void PushStartEvent(string name, DateTime datetime, long? eventVersion, bool addPlayerIdsToEventBody = false)
         {
         }
 
