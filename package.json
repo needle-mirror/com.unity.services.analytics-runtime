@@ -1,18 +1,21 @@
 {
   "name": "com.unity.services.analytics-runtime",
   "displayName": "Analytics Runtime",
-  "version": "1.0.0-pre.2",
+  "version": "1.0.0-pre.3",
   "unity": "2019.4",
   "description": "Analytics Runtime provides a basic implementation to interact with the UA2 service, use this package if you wish to create an analytics type package.",
   "dependencies": {
     "com.unity.services.core": "1.1.0-pre.8"
   },
+  "relatedPackages": {
+    "com.unity.services.analytics-runtime.tests": "1.0.0-pre.3"
+  },
   "upmCi": {
-    "footprint": "091fb16f37d700951682cc6b6be3fa3371a9792e"
+    "footprint": "abe8e104fbebf5896a7dcfe4ef8ddfdd2f6b47cb"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/Catapult.mono.git",
     "type": "git",
-    "revision": "75222032ddef3f018f8f3d782a2a201cd2fe5b91"
+    "revision": "3a5f086f03654de4d3b25d51086c6f2ceece1266"
   }
 }

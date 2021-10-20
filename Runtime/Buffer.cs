@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -11,7 +11,8 @@ namespace Unity.Services.Analytics.Internal
     {
         string UserID { get; set; }
         string SessionID { get; set; }
-        string Serialize();
+        (string, int) Serialize();
+        void RemoveSentTokens(int tokenCount);
         void PushStartEvent(string name, DateTime datetime, Int64? eventVersion);
         void PushEndEvent();
         void PushObjectStart(string name = null);
@@ -27,6 +28,7 @@ namespace Unity.Services.Analytics.Internal
         void PushTimestamp(DateTime val, string name = null);
         void FlushToDisk();
         void ClearDiskCache();
+        void ClearBuffer();
         void LoadFromDisk();
         void PushEvent(Event evt);
     }
@@ -102,7 +104,7 @@ namespace Unity.Services.Analytics.Internal
         /// internal data.
         /// </summary>
         /// <returns>String of JSON or Null</returns>
-        public string Serialize()
+        public (string, int) Serialize()
         {
             #if UNITY_ANALYTICS_DEVELOPMENT
             Debug.Assert(!string.IsNullOrEmpty(UserID));
@@ -111,7 +113,7 @@ namespace Unity.Services.Analytics.Internal
 
             if (m_Tokens.Count == 0)
             {
-                return null;
+                return (null, 0);
             }
 
             StringBuilder data = new StringBuilder();
@@ -140,9 +142,9 @@ namespace Unity.Services.Analytics.Internal
                         data.Append("\"eventUUID\":\"");
                         data.Append(Guid.NewGuid().ToString());
                         data.Append("\",");
-                        
+
                         #if UNITY_ANALYTICS_EVENT_LOGS
-                        Debug.LogFormat("<color=#00ff00>Event: {0}</color>", t.Name);
+                        Debug.LogFormat("Serializing event {0} for dispatch...", t.Name);
                         #endif
 
                         // Session ID and UserID are also needed here.
@@ -290,12 +292,15 @@ namespace Unity.Services.Analytics.Internal
 
             data.Append("]}");
 
-            m_Tokens.RemoveRange(0, tokensSent);
-
-            return data.ToString();
+            return (data.ToString(), tokensSent);
         }
 
-        static string SaveDateTime(DateTime dateTime)
+        public void RemoveSentTokens(int tokensSent)
+        {
+            m_Tokens.RemoveRange(0, tokensSent);
+        }
+
+        public static string SaveDateTime(DateTime dateTime)
         {
             return dateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
@@ -315,6 +320,10 @@ namespace Unity.Services.Analytics.Internal
 
         public void PushStartEvent(string name, DateTime datetime, Int64? eventVersion)
         {
+            #if UNITY_ANALYTICS_EVENT_LOGS
+            Debug.LogFormat("Recorded event {0} at {1} (UTC)", name, SaveDateTime(datetime));
+            #endif
+
             m_Tokens.Add(new Token
             {
                 Name = name,
@@ -503,6 +512,12 @@ namespace Unity.Services.Analytics.Internal
             }
         }
 
+        public void ClearBuffer()
+        {
+            m_Tokens.Clear();
+            ClearDiskCache();
+        }
+
         public void LoadFromDisk()
         {
             m_Tokens.Clear();
@@ -632,6 +647,93 @@ namespace Unity.Services.Analytics.Internal
             }
             
             PushEndEvent();
+        }
+    }
+
+    public class BufferRevoked : IBuffer
+    {
+        public string UserID { get; set; }
+        public string SessionID { get; set; }
+
+        public void ClearBuffer()
+        {
+        }
+
+        public void ClearDiskCache()
+        {
+        }
+
+        public void FlushToDisk()
+        {
+        }
+
+        public void LoadFromDisk()
+        {
+        }
+
+        public void PushArrayEnd()
+        {
+        }
+
+        public void PushArrayStart(string name = null)
+        {
+        }
+
+        public void PushBool(bool val, string name = null)
+        {
+        }
+
+        public void PushDouble(double val, string name = null)
+        {
+        }
+
+        public void PushEndEvent()
+        {
+        }
+
+        public void PushEvent(Event evt)
+        {
+        }
+
+        public void PushFloat(float val, string name = null)
+        {
+        }
+
+        public void PushInt(int val, string name = null)
+        {
+        }
+
+        public void PushInt64(long val, string name = null)
+        {
+        }
+
+        public void PushObjectEnd()
+        {
+        }
+
+        public void PushObjectStart(string name = null)
+        {
+        }
+
+        public void PushStartEvent(string name, DateTime datetime, long? eventVersion)
+        {
+        }
+
+        public void PushString(string val, string name = null)
+        {
+        }
+
+        public void PushTimestamp(DateTime val, string name = null)
+        {
+        }
+
+        public void RemoveSentTokens(int tokenCount)
+        {
+        }
+
+        public (string, int) Serialize()
+        {
+            return (String.Empty, 0);
         }
     }
 }

@@ -6,9 +6,10 @@ namespace Unity.Services.Analytics.Internal.Platform
     {
         public static string Name()
         {
-            var culture = Locale.CurrentCulture();
-            var region = new RegionInfo(culture.LCID);
-            return region.TwoLetterISORegionName;
+            // User country cannot be reliably deduced from any setting we have available here
+            // without using location services, so we return ZZ so the Analytics service will use
+            // GeoIP.
+            return "";
         }
     }
 }

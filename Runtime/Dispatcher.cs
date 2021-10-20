@@ -6,12 +6,13 @@ namespace Unity.Services.Analytics.Internal
 {
     public class Dispatcher
     {
-        readonly Buffer m_DataBuffer;
+        readonly IBuffer m_DataBuffer;
         UnityWebRequestAsyncOperation m_Request;
+        int m_RequestSentTokens;
 
         public string CollectUrl { get; set; }
 
-        public Dispatcher(Buffer buffer)
+        public Dispatcher(IBuffer buffer)
         {
             m_DataBuffer = buffer;
         }
@@ -24,18 +25,7 @@ namespace Unity.Services.Analytics.Internal
                 return;
             }
 
-            if (HasConnectivity())
-            {
-                FlushBufferToService();
-
-                // We have got the internet back so the disk cache is no longer needed.
-                // If the internet fails again, we will flush the buffer from scratch at that time.
-                m_DataBuffer.ClearDiskCache();
-            }
-            else
-            {
-                m_DataBuffer.FlushToDisk();
-            }
+            FlushBufferToService();
         }
 
         void FlushBufferToService()
@@ -43,7 +33,7 @@ namespace Unity.Services.Analytics.Internal
             // Serialize it into a JSON Blob, then POST it to the Collect bulk URL.
             // 'Bulk Events' -> https://docs.deltadna.com/advanced-integration/rest-api/
 
-            string collectData = m_DataBuffer.Serialize();
+            (string collectData, int sentTokens) = m_DataBuffer.Serialize();
 
             if (string.IsNullOrEmpty(collectData))
             {
@@ -56,30 +46,55 @@ namespace Unity.Services.Analytics.Internal
             UploadHandlerRaw upload = new UploadHandlerRaw(postBytes);
             upload.contentType = "application/json";
             request.uploadHandler = upload;
-            
+
+            m_RequestSentTokens = sentTokens;
             m_Request = request.SendWebRequest();
+            m_Request.completed += UploadComplete;
             
-            #if UNITY_ANALYTICS_DEVELOPMENT
-            Debug.Log("<color=#00ffff>Sent Data</color>");
+            #if UNITY_ANALYTICS_EVENT_LOGS
+            Debug.Log("Uploading events...");
             #endif
-            
-            m_Request.completed += _ =>
-            {
-                #if UNITY_ANALYTICS_DEVELOPMENT
-                long code = m_Request.webRequest.responseCode;
-                Debug.Assert(code == 204, "Incorrect response, check your JSON for errors.");
-                Debug.LogFormat("<color=#00ffff>Collect result code - {0}</color>", code);
-                #endif
-                
-                // Clear the request to allow another request to be sent.
-                m_Request = null;
-            };
         }
 
-        static bool HasConnectivity()
+        void UploadComplete(AsyncOperation _)
         {
-            // TODO: LOSDK-413 as this property isn't the most reliable way of determining connectivity
-            return Application.internetReachability != NetworkReachability.NotReachable;
+            long code = m_Request.webRequest.responseCode;
+
+            #if UNITY_ANALYTICS_EVENT_LOGS
+            Debug.Assert(code == 204, "Incorrect response, check your JSON for errors.");
+            #endif
+
+            if (!m_Request.webRequest.isNetworkError && code == 204)
+            {
+                #if UNITY_ANALYTICS_EVENT_LOGS
+                Debug.LogFormat("Events uploaded successfully!", code);
+                #endif
+
+                // Remove the sent tokens from the buffer because they were accepted
+                m_DataBuffer.RemoveSentTokens(m_RequestSentTokens);
+
+                // We have got the internet so the disk cache is no longer needed.
+                // If the internet fails again, we will flush the buffer from scratch at that time.
+                m_DataBuffer.ClearDiskCache();
+            }
+            else
+            {
+                #if UNITY_ANALYTICS_EVENT_LOGS
+                if (m_Request.webRequest.isNetworkError)
+                {
+                    Debug.Log("Events failed to upload (network error) -- will retry at next heartbeat.");
+                }
+                else
+                {
+                    Debug.LogFormat("Events failed to upload (code {0}) -- will retry at next heartbeat.", code);
+                }
+                #endif
+                m_DataBuffer.FlushToDisk();
+            }
+
+            // Clear the request to allow another request to be sent.
+            m_Request.webRequest.Dispose();
+            m_Request = null;
         }
     }
 }
