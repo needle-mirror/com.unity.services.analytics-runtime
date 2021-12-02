@@ -4,6 +4,9 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using UnityEngine;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Unity.Services.AnalyticsRuntime.Tests")]
 
 namespace Unity.Services.Analytics.Internal
 {
@@ -11,8 +14,8 @@ namespace Unity.Services.Analytics.Internal
     {
         string UserID { get; set; }
         string SessionID { get; set; }
-        (string, int) Serialize();
-        void RemoveSentTokens(int tokenCount);
+        string Serialize(List<Buffer.Token> tokens);
+        void InsertTokens(List<Buffer.Token> tokens);
         void PushStartEvent(string name, DateTime datetime, Int64? eventVersion);
         void PushEndEvent();
         void PushObjectStart(string name = null);
@@ -31,6 +34,7 @@ namespace Unity.Services.Analytics.Internal
         void ClearBuffer();
         void LoadFromDisk();
         void PushEvent(Event evt);
+        List<Buffer.Token> CloneTokens();
     }
     
     /// <summary>
@@ -49,7 +53,7 @@ namespace Unity.Services.Analytics.Internal
         // With the exception of EventStart, EventEnd, these tokens map to the
         // DDNA JSON Schema. The full schema at the time of writing is. OBJECT,
         // ARRAY, STRING, INTEGER, BOOLEAN, TIMESTAMP, EVENT_TIMESTAMP, FLOAT.
-        enum TokenType
+        public enum TokenType
         {
             EventStart,
             EventEnd,
@@ -70,7 +74,7 @@ namespace Unity.Services.Analytics.Internal
         // The event information is broken into name, type, and data. The name
         // usually ends up being the key in the JSON and the type and data are
         // for serialization.
-        struct Token
+        public struct Token
         {
             public string Name;
             public TokenType Type;
@@ -95,6 +99,19 @@ namespace Unity.Services.Analytics.Internal
             ClearDiskCache();
         }
 
+        public List<Token> CloneTokens()
+        {
+            var tokens = new List<Token>(m_Tokens);
+            m_Tokens.Clear();
+            return tokens;
+        }
+        
+        
+        public void InsertTokens(List<Token> tokens)
+        {
+            m_Tokens.AddRange(tokens);
+        }
+
         // LOSDK-165 need to be mindful of 5MB limit in future.
         // LOSDK-166 need to honor the enabled list.
         // LOSDK-174 generate the data better.
@@ -104,26 +121,25 @@ namespace Unity.Services.Analytics.Internal
         /// internal data.
         /// </summary>
         /// <returns>String of JSON or Null</returns>
-        public (string, int) Serialize()
+        public string Serialize(List<Token> tokens)
         {
             #if UNITY_ANALYTICS_DEVELOPMENT
             Debug.Assert(!string.IsNullOrEmpty(UserID));
             Debug.Assert(!string.IsNullOrEmpty(SessionID));
             #endif
 
-            if (m_Tokens.Count == 0)
+            if (tokens.Count == 0)
             {
-                return (null, 0);
+                return null;
             }
 
             StringBuilder data = new StringBuilder();
-            int tokensSent = 0;
 
             // The JSON output has not been tested with DDNA yet, we the ability
             // to actually send the info to the backend next.
             data.Append("{\"eventList\":[");
 
-            foreach (Token t in m_Tokens)
+            foreach (Token t in tokens)
             {
                 switch (t.Type)
                 {
@@ -276,8 +292,6 @@ namespace Unity.Services.Analytics.Internal
                     }
                 }
 
-                tokensSent += 1;
-                
                 if (t.Type == TokenType.EventEnd && IsRequestOverSizeLimit(data.ToString()))
                 {
                     break;
@@ -292,12 +306,7 @@ namespace Unity.Services.Analytics.Internal
 
             data.Append("]}");
 
-            return (data.ToString(), tokensSent);
-        }
-
-        public void RemoveSentTokens(int tokensSent)
-        {
-            m_Tokens.RemoveRange(0, tokensSent);
+            return data.ToString();
         }
 
         public static string SaveDateTime(DateTime dateTime)
@@ -663,6 +672,15 @@ namespace Unity.Services.Analytics.Internal
         {
         }
 
+        public List<Buffer.Token> CloneTokens()
+        {
+            return new List<Buffer.Token>();
+        }
+        
+        public void InsertTokens(List<Buffer.Token> tokens)
+        {
+        }
+
         public void FlushToDisk()
         {
         }
@@ -727,13 +745,9 @@ namespace Unity.Services.Analytics.Internal
         {
         }
 
-        public void RemoveSentTokens(int tokenCount)
+        public string Serialize(List<Buffer.Token> tokens)
         {
-        }
-
-        public (string, int) Serialize()
-        {
-            return (String.Empty, 0);
+            return String.Empty;
         }
     }
 }

@@ -4,6 +4,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-pre.2] - 2021-12-02
+
+### Changed
+
+* Required headers in `ConsentTracker` don't check the consent status anymore, the returned dictionary is solely based on the GeoIP response.
+
+## [2.0.0-pre.1] - 2021-11-26
+
+### Added
+
+* `ConsentTracker` to enable checking whether the required consent was given for sending and storing analytics data
+
+**Breaking Change**
+* `Dispatcher` and `AnalyticsForgetter` now require a successful `GeoIP` call before sending events.
+
 ## [1.0.0-pre.3] - 2021-10-20
 
 ### Added
